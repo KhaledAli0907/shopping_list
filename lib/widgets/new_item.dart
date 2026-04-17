@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:shopping_list/data/categories.dart';
-import 'package:shopping_list/env.dart';
+import 'package:shopping_list/helpers/build_url.dart';
 import 'package:shopping_list/models/category.dart';
 import 'package:shopping_list/models/grocery_item.dart';
 
@@ -19,10 +19,10 @@ class NewItemScreen extends StatefulWidget {
 
 class _NewItemState extends State<NewItemScreen> {
   final _formKey = GlobalKey<FormState>();
-  var _enteredName = '';
-  var _enteredQuantity = 1;
+  String _enteredName = '';
+  int _enteredQuantity = 1;
   var _selectedCategory = categories[Categories.vegetables]!;
-  var _isSending = false;
+  bool _isSending = false;
 
   Future<void> _saveItem() async {
     if (_formKey.currentState!.validate()) {
@@ -31,7 +31,7 @@ class _NewItemState extends State<NewItemScreen> {
         _isSending = true;
       });
       final response = await http.post(
-        kDatabaseUrl,
+        shoppingListUri(),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'name': _enteredName,

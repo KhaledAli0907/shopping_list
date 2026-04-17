@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shopping_list/data/categories.dart';
-import 'package:shopping_list/env.dart';
+import 'package:shopping_list/helpers/build_url.dart';
 import 'package:shopping_list/models/category.dart';
 
 import 'package:shopping_list/models/grocery_item.dart';
@@ -18,7 +18,8 @@ class GroceryList extends StatefulWidget {
 
 class _GroceryListState extends State<GroceryList> {
   List<GroceryItem> _groceryItems = [];
-  var _isLoading = true;
+  bool _isLoading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -27,7 +28,13 @@ class _GroceryListState extends State<GroceryList> {
   }
 
   Future<void> _loadItems() async {
-    final response = await http.get(kDatabaseUrl);
+    final response = await http.get(shoppingListUri());
+    if (response.statusCode >= 400) {
+      setState(() {
+        _error = 'Failed to fetch data. Please try again later.';
+      });
+      return;
+    }
     final dynamic decoded = json.decode(response.body);
     if (decoded == null) {
       if (!mounted) return;
@@ -122,22 +129,43 @@ class _GroceryListState extends State<GroceryList> {
     if (_groceryItems.isNotEmpty) {
       content = ListView.builder(
         itemCount: _groceryItems.length,
-        itemBuilder: (ctx, index) => Dismissible(
-          onDismissed: (direction) {
-            _removeItem(_groceryItems[index]);
-          },
-          key: ValueKey(_groceryItems[index].id),
-          child: ListTile(
-            title: Text(_groceryItems[index].name),
-            leading: Container(
-              width: 24,
-              height: 24,
-              color: _groceryItems[index].category.color,
+        itemBuilder: (ctx, index) {
+          final item = _groceryItems[index];
+          return Dismissible(
+            confirmDismiss: (direction) async {
+              final response = await http.delete(shoppingListItemUri(item.id));
+              if (response.statusCode >= 400) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Could not delete item. Try again.'),
+                    ),
+                  );
+                }
+                return false;
+              }
+              return true;
+            },
+            onDismissed: (direction) {
+              _removeItem(item);
+            },
+            key: ValueKey(item.id),
+            child: ListTile(
+              title: Text(item.name),
+              leading: Container(
+                width: 24,
+                height: 24,
+                color: item.category.color,
+              ),
+              trailing: Text(item.quantity.toString()),
             ),
-            trailing: Text(_groceryItems[index].quantity.toString()),
-          ),
-        ),
+          );
+        },
       );
+    }
+
+    if (_error != null) {
+      content = Center(child: Text(_error!));
     }
 
     return Scaffold(
