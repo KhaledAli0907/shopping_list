@@ -1,5 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
 import 'package:shopping_list/data/categories.dart';
+import 'package:shopping_list/env.dart';
 import 'package:shopping_list/models/category.dart';
 import 'package:shopping_list/models/grocery_item.dart';
 
@@ -7,46 +12,46 @@ class NewItemScreen extends StatefulWidget {
   const NewItemScreen({super.key});
 
   @override
-  State<NewItemScreen> createState() => _NewItemScreenState();
+  State<NewItemScreen> createState() {
+    return _NewItemState();
+  }
 }
 
-class _NewItemScreenState extends State<NewItemScreen> {
+class _NewItemState extends State<NewItemScreen> {
   final _formKey = GlobalKey<FormState>();
-  String? _enteredName = '';
-  int? _enteredQuantity = 1;
-  Category? _selectedCategory = categories[Categories.other]!;
+  var _enteredName = '';
+  var _enteredQuantity = 1;
+  var _selectedCategory = categories[Categories.vegetables]!;
+  var _isSending = false;
 
-  String? _validateInput(String? value, {required bool isQuantity}) {
-    if (value == null || value.isEmpty) {
-      return isQuantity
-          ? 'Quantity must be a positive number'
-          : 'Name must be between 2 and 50 characters long';
-    }
-
-    if (isQuantity) {
-      final parsedValue = int.tryParse(value);
-      if (parsedValue == null || parsedValue <= 0) {
-        return 'Quantity must be a positive number';
-      }
-      return null;
-    }
-
-    final trimmedValue = value.trim();
-    if (trimmedValue.length <= 1 || trimmedValue.length > 50) {
-      return 'Name must be between 2 and 50 characters long';
-    }
-    return null;
-  }
-
-  void _saveItem() {
+  Future<void> _saveItem() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
+      setState(() {
+        _isSending = true;
+      });
+      final response = await http.post(
+        kDatabaseUrl,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'name': _enteredName,
+          'quantity': _enteredQuantity,
+          'category': _selectedCategory.name,
+        }),
+      );
+
+      final Map<String, dynamic> resData = json.decode(response.body);
+
+      if (!mounted) {
+        return;
+      }
+
       Navigator.of(context).pop(
         GroceryItem(
-          id: DateTime.now().toIso8601String(),
-          name: _enteredName!,
-          quantity: _enteredQuantity!,
-          category: _selectedCategory!,
+          id: resData['name'],
+          name: _enteredName,
+          quantity: _enteredQuantity,
+          category: _selectedCategory,
         ),
       );
     }
@@ -64,22 +69,42 @@ class _NewItemScreenState extends State<NewItemScreen> {
             children: [
               TextFormField(
                 maxLength: 50,
-                decoration: const InputDecoration(labelText: 'Name'),
-                validator: (value) => _validateInput(value, isQuantity: false),
+                decoration: const InputDecoration(label: Text('Name')),
+                validator: (value) {
+                  if (value == null ||
+                      value.isEmpty ||
+                      value.trim().length <= 1 ||
+                      value.trim().length > 50) {
+                    return 'Must be between 1 and 50 characters.';
+                  }
+                  return null;
+                },
                 onSaved: (value) {
+                  // if (value == null) {
+                  //   return;
+                  // }
                   _enteredName = value!;
                 },
-              ),
+              ), // instead of TextField()
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Expanded(
                     child: TextFormField(
-                      decoration: InputDecoration(labelText: 'Quantity'),
-                      initialValue: '1',
+                      decoration: const InputDecoration(
+                        label: Text('Quantity'),
+                      ),
                       keyboardType: TextInputType.number,
-                      validator: (value) =>
-                          _validateInput(value, isQuantity: true),
+                      initialValue: _enteredQuantity.toString(),
+                      validator: (value) {
+                        if (value == null ||
+                            value.isEmpty ||
+                            int.tryParse(value) == null ||
+                            int.tryParse(value)! <= 0) {
+                          return 'Must be a valid, positive number.';
+                        }
+                        return null;
+                      },
                       onSaved: (value) {
                         _enteredQuantity = int.parse(value!);
                       },
@@ -108,7 +133,7 @@ class _NewItemScreenState extends State<NewItemScreen> {
                       ],
                       onChanged: (value) {
                         setState(() {
-                          _selectedCategory = value;
+                          _selectedCategory = value!;
                         });
                       },
                     ),
@@ -120,14 +145,22 @@ class _NewItemScreenState extends State<NewItemScreen> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
-                    onPressed: () {
-                      _formKey.currentState!.reset();
-                    },
+                    onPressed: _isSending
+                        ? null
+                        : () {
+                            _formKey.currentState!.reset();
+                          },
                     child: const Text('Reset'),
                   ),
-                  TextButton(
-                    onPressed: _saveItem,
-                    child: const Text('Add Item'),
+                  ElevatedButton(
+                    onPressed: _isSending ? null : _saveItem,
+                    child: _isSending
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(),
+                          )
+                        : const Text('Add Item'),
                   ),
                 ],
               ),
